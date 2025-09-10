@@ -161,12 +161,26 @@ func randomStatusHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	
+	response := SuccessResponse{
+		Status:    "healthy",
+		Message:   "Service is healthy",
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+	}
+	
+	json.NewEncoder(w).Encode(response)
+}
+
 func main() {
 	tracer.Start()
 	defer tracer.Stop()
 
 	r := muxtrace.NewRouter()
 	r.HandleFunc("/", randomStatusHandler)
+	r.HandleFunc("/health", healthHandler)
 
 	log.Println("Started")
 	log.Fatal(http.ListenAndServe(":8080", r))
