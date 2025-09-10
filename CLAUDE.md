@@ -111,6 +111,9 @@ The Go app expects these Datadog environment variables (set in Kubernetes deploy
 - Downloads appropriate architecture-specific Datadog module from GitHub releases
 - Supports both amd64 and arm64 architectures
 
+**Reference Documentation:**
+- [Official Datadog Nginx Tracing Guide](https://docs.datadoghq.com/tracing/trace_collection/proxy_setup/nginx/)
+
 **Configuration Features:**
 - Direct proxying to `api:8080` service with Datadog trace header propagation
 - Datadog HTTP module v1.7.0 enabled with `load_module /usr/lib/nginx/modules/ngx_http_datadog_module.so`
@@ -164,7 +167,10 @@ tags.datadoghq.com/version: "0.1.0"
 **Example Trace Correlation:**
 - **Nginx log**: `dd.trace_id="68c194b700000000414c17f0a72717c6" dd.span_id="414c17f0a72717c6"`
 - **API log**: `"trace_id_hex":"414c17f0a72717c6" "span_id_hex":"65b0927be4a29005"`
-- **Result**: ✅ Matching trace ID enables end-to-end request visibility
+- **Local debugging**: ✅ Matching trace ID enables easy visual correlation in logs
+- **Datadog platform**: Automatic log-to-trace correlation via Datadog log processing pipeline
+
+**Important**: The dual hex/decimal format in API logs is primarily for **easier local debugging**. In the Datadog platform, trace correlation happens automatically through log processing pipelines that parse `dd.trace_id` and `dd.span_id` fields and remap them for APM correlation.
 
 ### Container Images
 - **API Image**: Multi-stage build (golang:1.25-alpine → alpine:latest), runs as non-root user

@@ -155,6 +155,9 @@ The Nginx reverse proxy:
 * Proper trace correlation with downstream Go API service
 * Architecture-specific module installation (amd64/arm64 support)
 
+**Reference Documentation:**
+* [Official Datadog Nginx Tracing Guide](https://docs.datadoghq.com/tracing/trace_collection/proxy_setup/nginx/)
+
 Key features:
 - **Service**: `sample-nginx`
 - **Module**: Datadog nginx-datadog v1.7.0 with dd-trace-cpp@v1.0.0
@@ -254,6 +257,22 @@ When a request flows through the system:
 6. **Datadog UI** shows the complete distributed trace with parent-child span relationships
 
 **Result**: Complete end-to-end visibility from nginx proxy through Go API with matching trace correlation.
+
+## Log-to-Trace Correlation in Datadog
+
+**Important**: The trace correlation shown in logs above is primarily for **easier local debugging**. In the Datadog platform, proper log-to-trace correlation happens automatically through **log processing pipelines**:
+
+### Automatic Correlation Process:
+1. **Nginx logs** include `dd.trace_id` and `dd.span_id` in the log format
+2. **Datadog log pipeline** parses these fields using a Grok parser:
+   ```
+   extract_correlation_ids %{data} dd.trace_id="%{notSpace:dd.trace_id:nullIf("-")}" dd.span_id="%{notSpace:dd.span_id:nullIf("-")}"
+   ```
+3. **Trace ID Remapper** associates the parsed trace ID with its corresponding APM trace
+4. **Span ID Remapper** associates the parsed span ID with its corresponding APM span
+5. **Result**: Automatic correlation between logs and traces in the Datadog UI
+
+The dual hex/decimal format we added to the Go API logs is a debugging enhancement that makes it easier to visually match trace IDs when troubleshooting locally, but the actual platform correlation relies on Datadog's log processing pipeline.
 
 ## Configuration Files
 
