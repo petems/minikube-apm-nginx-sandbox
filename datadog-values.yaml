@@ -1,0 +1,59 @@
+datadog:
+  site: datadoghq.com
+  apiKeyExistingSecret: datadog-secret
+  tags:
+    - env:minikube
+    - owner:petems
+    - service:nginx-go-demo
+  # datadog.kubelet.tlsVerify should be `false` on kind and minikube
+  # to establish communication with the kubelet
+  kubelet:
+    tlsVerify: false
+  apm:
+    # Enable APM
+    enabled: true
+    # Enable non-local traffic to receive traces from other containers
+    portEnabled: true
+    port: 8126
+    # Enable single step instrumentation
+    instrumentation:
+      enabled: true
+      enabledNamespaces: ["default"]
+      libVersions:
+        go: latest
+        java: latest
+  logs:
+    enabled: true
+    containerCollectAll: true
+  # Enable process monitoring
+  processAgent:
+    enabled: true
+    processCollection: true
+  # Enable orchestrator explorer for Kubernetes visibility
+  orchestratorExplorer:
+    enabled: true
+  # Enable cluster agent for better Kubernetes integration
+clusterAgent:
+  enabled: true
+  # Enable metrics provider for HPA and other features
+  metricsProvider:
+    enabled: true
+    useDatadogMetrics: true
+  # Enable cluster checks
+  clusterChecks:
+    enabled: true
+
+# Configure the node agent
+agents:
+  # Enable log collection from containers
+  containers:
+    agent:
+      env:
+        - name: DD_LOGS_ENABLED
+          value: "true"
+        - name: DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL
+          value: "true"
+        - name: DD_APM_ENABLED
+          value: "true"
+        - name: DD_APM_NON_LOCAL_TRAFFIC
+          value: "true"

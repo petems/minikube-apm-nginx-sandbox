@@ -1,0 +1,93 @@
+apiVersion: v1
+data:
+  nginx.conf: |
+    error_log  /var/log/nginx/error.log notice;
+    pid        /var/run/nginx.pid;
+
+    events {
+        worker_connections  1024;
+    }
+
+    http {
+        include       /etc/nginx/mime.types;
+        default_type  application/octet-stream;
+
+        # Enhanced log format for potential trace correlation
+        log_format main_with_timing '$remote_addr - $remote_user [$time_local] "$request" '
+                                   '$status $body_bytes_sent $request_time '
+                                   '"$http_referer" "$http_user_agent" "$http_x_forwarded_for"';
+        
+        access_log  /var/log/nginx/access.log main_with_timing;
+        sendfile        on;
+        keepalive_timeout  65;
+
+        # Upstream configuration for better load balancing
+        upstream api_backend {
+            server api:8080;
+            keepalive 32;
+        }
+
+        # Main server block
+        server {
+            listen       80;
+            server_name  localhost;
+
+            # Health check endpoint
+            location /health {
+                access_log off;
+                return 200 "healthy\n";
+                add_header Content-Type text/plain;
+            }
+
+            # Main proxy location
+            location / {
+                # Proxy headers for better communication
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                
+                # Connection settings
+                proxy_http_version 1.1;
+                proxy_set_header Connection "";
+                
+                # Timeouts
+                proxy_connect_timeout 5s;
+                proxy_send_timeout 10s;
+                proxy_read_timeout 10s;
+                
+                proxy_pass http://api_backend;
+            }
+        }
+
+        # Status server for Datadog nginx integration
+        server {
+            listen 81;
+            server_name _;
+            access_log off;
+
+            location /nginx_status {
+                stub_status;
+                server_tokens on;
+                # Allow access from Datadog agent
+                allow 10.0.0.0/8;
+                allow 127.0.0.1;
+                allow 172.16.0.0/12;
+                allow 192.168.0.0/16;
+                deny all;
+            }
+
+            # Health check for status server
+            location /health {
+                return 200 "nginx status server healthy\n";
+                add_header Content-Type text/plain;
+            }
+        }
+    }
+kind: ConfigMap
+metadata:
+  annotations:
+    use-subpath: "true"
+  labels:
+    io.kompose.service: nginx
+  name: nginx-cm0

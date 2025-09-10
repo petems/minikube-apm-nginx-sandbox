@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    # Enable Single Step APM instrumentation
+    admission.datadoghq.com/enabled: "true"
+  labels:
+    io.kompose.service: api
+    app: sample-api
+    tags.datadoghq.com/env: "dev"
+    tags.datadoghq.com/service: "sample-api"
+    tags.datadoghq.com/version: "0.1.0"
+  name: api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: api
+  template:
+    metadata:
+      annotations:
+        # Enable Single Step APM instrumentation at pod level
+        admission.datadoghq.com/enabled: "true"
+        # Specify which container to instrument
+        admission.datadoghq.com/go-lib.version: "latest"
+      labels:
+        io.kompose.service: api
+        app: sample-api
+        tags.datadoghq.com/env: "dev"
+        tags.datadoghq.com/service: "sample-api"
+        tags.datadoghq.com/version: "0.1.0"
+    spec:
+      containers:
+        - name: sample-api
+          image: api:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          env:
+            # Datadog configuration
+            - name: DD_ENV
+              value: "dev"
+            - name: DD_SERVICE
+              value: "sample-api"
+            - name: DD_VERSION
+              value: "0.1.0"
+            - name: DD_AGENT_HOST
+              value: "datadog-agent"
+            - name: DD_TRACE_AGENT_URL
+              value: "http://datadog-agent:8126"
+            - name: DD_RUNTIME_METRICS_ENABLED
+              value: "true"
+            - name: DD_LOGS_INJECTION
+              value: "true"
+            - name: DD_TRACE_STARTUP_LOGS
+              value: "true"
+            # Enable APM
+            - name: DD_TRACE_ENABLED
+              value: "true"
+            - name: DD_PROFILING_ENABLED
+              value: "true"
+          # Resource limits and requests
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "100m"
+          # Health checks
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      restartPolicy: Always

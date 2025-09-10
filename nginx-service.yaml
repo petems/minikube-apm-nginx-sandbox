@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    # Service-level Datadog monitoring annotations
+    service.datadoghq.com/sample-nginx.check.nginx.nginx_status_url: "http://%%host%%:81/nginx_status"
+  labels:
+    io.kompose.service: nginx
+    app: sample-nginx
+    tags.datadoghq.com/env: "dev"
+    tags.datadoghq.com/service: "sample-nginx"
+    tags.datadoghq.com/version: "0.1.0"
+  name: nginx
+spec:
+  type: LoadBalancer
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP
+    - name: status
+      port: 81
+      targetPort: 81
+      protocol: TCP
+  selector:
+    io.kompose.service: nginx

@@ -1,0 +1,6 @@
+logs:
+  - type: file
+    path: "/app/prod.log"
+    service: sample-api
+    source: go
+    sourcecategory: sourcecode
