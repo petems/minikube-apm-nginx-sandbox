@@ -13,7 +13,7 @@ This project demonstrates a complete end-to-end distributed tracing setup using:
 External Request → Nginx (traced) → Go API (traced) → Datadog Agent → Datadog UI
 ```
 
-**Trace Correlation**: Both Nginx and the Go API generate trace spans that are correlated through distributed trace headers, providing complete visibility into request flow.
+**Trace Correlation**: Nginx creates root spans with full 128-bit trace IDs and forwards trace context headers to the Go API, which continues the same trace as child spans. Enhanced logging shows both decimal and hexadecimal formats for easy correlation.
 
 ## Prerequisites
 
@@ -132,30 +132,35 @@ done
 ### Go API (`api/main.go`)
 
 The Go application:
-* Uses `dd-trace-go` for native Datadog tracing
-* Implements structured logging with trace correlation
-* Generates random success/error responses for demonstration
-* Includes comprehensive trace tags and error handling
+* Uses `dd-trace-go` for native Datadog tracing with automatic trace context extraction
+* Enhanced structured logging with dual-format trace/span IDs (decimal and hexadecimal)
+* Dedicated `/health` endpoint for reliable Kubernetes health checks
+* Generates realistic success/error responses on main endpoint for tracing demonstration
+* Includes comprehensive trace tags, error handling, and request correlation
 
 Key features:
 - **Service**: `sample-api`
 - **Environment**: `dev`  
 - **Version**: `0.1.0`
-- **Endpoints**: `/` (random responses)
+- **Endpoints**: 
+  - `/` (random responses for tracing demo - 50% success, 30% client errors, 20% server errors)
+  - `/health` (always returns 200 OK for Kubernetes health checks)
 
 ### Nginx Configuration
 
 The Nginx reverse proxy:
-* Uses the official Datadog nginx module for tracing
-* Configured for trace correlation with downstream services
-* Includes proper log formatting with trace IDs
-* Provides health checks and status endpoints
+* Uses the official Datadog nginx module v1.7.0 for distributed tracing
+* Automatically creates root spans and forwards trace context headers (`X-Datadog-Trace-Id`, `X-Datadog-Parent-Id`, `X-Datadog-Sampling-Priority`)
+* Enhanced log formatting with `$datadog_trace_id` and `$datadog_span_id` variables
+* Proper trace correlation with downstream Go API service
+* Architecture-specific module installation (amd64/arm64 support)
 
 Key features:
 - **Service**: `sample-nginx`
-- **Trace correlation**: Passes trace headers to upstream
-- **Status endpoint**: `/nginx_status` on port 81
-- **Health check**: `/health`
+- **Module**: Datadog nginx-datadog v1.7.0 with dd-trace-cpp@v1.0.0
+- **Trace correlation**: Forwards complete trace context to API service
+- **Status endpoint**: `/nginx_status` on port 81 for Datadog integration
+- **Health checks**: `/health` on both port 80 and 81
 
 ### Datadog Agent Configuration (`datadog-values.yaml`)
 
@@ -241,11 +246,14 @@ Once traces are flowing, you can:
 
 When a request flows through the system:
 
-1. **Nginx** creates a root span with trace ID `123456789`
-2. **Nginx logs** include: `dd.trace_id="123456789" dd.span_id="987654321"`  
-3. **Go API** continues the trace with the same trace ID `123456789`
-4. **API logs** include the same trace ID for correlation
-5. **Datadog UI** shows the complete request journey across both services
+1. **Nginx** creates a root span with 128-bit trace ID `68c194b700000000414c17f0a72717c6`
+2. **Nginx logs** include: `dd.trace_id="68c194b700000000414c17f0a72717c6" dd.span_id="414c17f0a72717c6"`
+3. **Nginx forwards** trace headers: `X-Datadog-Trace-Id`, `X-Datadog-Parent-Id`, `X-Datadog-Sampling-Priority`  
+4. **Go API** extracts trace context and continues the same trace as child span
+5. **API logs** include correlated IDs: `"trace_id_hex":"414c17f0a72717c6" "span_id_hex":"65b0927be4a29005"`
+6. **Datadog UI** shows the complete distributed trace with parent-child span relationships
+
+**Result**: Complete end-to-end visibility from nginx proxy through Go API with matching trace correlation.
 
 ## Configuration Files
 

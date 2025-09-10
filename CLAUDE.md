@@ -13,10 +13,10 @@ External Request → Nginx (traced) → Go API (traced) → Datadog Agent → Da
 ```
 
 **Core Components:**
-- **Go API** (`api/`): Instrumented with dd-trace-go v1.52.0, generates structured JSON logs with trace correlation
-- **Nginx Reverse Proxy** (`nginx/`): Custom image with Datadog module for request proxying and monitoring
+- **Go API** (`api/`): Instrumented with dd-trace-go v1.52.0, generates structured JSON logs with trace correlation, includes dual-format trace IDs (decimal/hex) for easy debugging
+- **Nginx Reverse Proxy** (`nginx/`): Custom image with Datadog HTTP module v1.7.0 for complete distributed tracing with header propagation
 - **Datadog Agent**: Deployed via Helm chart with Single Step APM instrumentation enabled
-- **Kubernetes Manifests**: Complete deployment configurations for Minikube
+- **Kubernetes Manifests**: Complete deployment configurations for Minikube with health check endpoints
 
 ## Development Commands
 
@@ -90,10 +90,13 @@ make stress  # Uses vegeta for load testing (requires vegeta installed)
 - `Dockerfile`: Multi-stage Alpine-based build for minimal container size
 
 **Tracing Implementation:**
-- Uses `muxtrace.NewRouter()` for automatic HTTP span creation
+- Uses `muxtrace.NewRouter()` for automatic HTTP span creation with trace context extraction
 - Implements custom span tagging with request IDs, HTTP details, and error classification
-- Structured JSON logging with `dd.trace_id` and `dd.span_id` injection via `ddtracelogrus.DDContextLogHook{}`
-- Simulates realistic error scenarios (client errors, server errors, timeouts)
+- Enhanced structured JSON logging with dual-format trace/span IDs:
+  - `dd.trace_id` and `dd.span_id` (decimal format for Datadog correlation)
+  - `trace_id_hex` and `span_id_hex` (hexadecimal format for nginx log correlation)
+- Dedicated `/health` endpoint for Kubernetes health checks (always returns 200 OK)
+- Simulates realistic error scenarios (client errors, server errors, timeouts) on main endpoint
 
 **Environment Configuration:**
 The Go app expects these Datadog environment variables (set in Kubernetes deployment):
@@ -109,10 +112,12 @@ The Go app expects these Datadog environment variables (set in Kubernetes deploy
 - Supports both amd64 and arm64 architectures
 
 **Configuration Features:**
-- Upstream load balancing to `api:8080` service
-- Health check endpoints on both main (`:80/health`) and status (`:81/health`) servers
+- Direct proxying to `api:8080` service with Datadog trace header propagation
+- Datadog HTTP module v1.7.0 enabled with `load_module /usr/lib/nginx/modules/ngx_http_datadog_module.so`
+- Trace context propagation headers: `X-Datadog-Trace-Id`, `X-Datadog-Parent-Id`, `X-Datadog-Sampling-Priority`
+- Enhanced logging format with `$datadog_trace_id` and `$datadog_span_id` variables
+- Health check endpoints on both main (`:80/health`) and status (`:81/health`) servers  
 - Nginx status endpoint (`:81/nginx_status`) for Datadog monitoring integration
-- Enhanced logging format with timing information
 
 ### Kubernetes Deployment
 
@@ -149,10 +154,17 @@ tags.datadoghq.com/version: "0.1.0"
 
 ### Trace Correlation Flow
 1. **Request Ingress**: External request hits nginx LoadBalancer service
-2. **Nginx Proxy**: Nginx creates initial spans (when Datadog module is properly configured)
-3. **API Processing**: Go API continues trace with same trace ID, logs include `dd.trace_id` and `dd.span_id`
-4. **Agent Collection**: Traces sent to `datadog-agent:8126` service endpoint
-5. **Datadog Upload**: Agent forwards traces to `https://trace.agent.datadoghq.com`
+2. **Nginx Span Creation**: Nginx Datadog module creates root span with 128-bit trace ID
+3. **Header Propagation**: Nginx forwards `X-Datadog-Trace-Id`, `X-Datadog-Parent-Id`, `X-Datadog-Sampling-Priority` headers
+4. **API Trace Continuation**: Go API extracts trace context and continues same trace as child span
+5. **Correlated Logging**: Both services log with matching trace IDs (nginx: full hex, API: lower 64-bit)
+6. **Agent Collection**: Traces sent to `datadog-agent:8126` service endpoint
+7. **Datadog Upload**: Agent forwards complete distributed trace to `https://trace.agent.datadoghq.com`
+
+**Example Trace Correlation:**
+- **Nginx log**: `dd.trace_id="68c194b700000000414c17f0a72717c6" dd.span_id="414c17f0a72717c6"`
+- **API log**: `"trace_id_hex":"414c17f0a72717c6" "span_id_hex":"65b0927be4a29005"`
+- **Result**: ✅ Matching trace ID enables end-to-end request visibility
 
 ### Container Images
 - **API Image**: Multi-stage build (golang:1.25-alpine → alpine:latest), runs as non-root user
@@ -171,6 +183,12 @@ tags.datadoghq.com/version: "0.1.0"
 - Confirm trace reception: APM Agent status should show "Traces received: X"
 
 **Single Step APM Not Working**: Check pod description for init containers (`datadog-init-apm-inject`, `datadog-lib-java-init`)
+
+**API CrashLoopBackOff**: API has dedicated `/health` endpoint - ensure health checks use `/health` not `/`
+
+**Nginx Module Not Loading**: Check nginx logs for "nginx-datadog status: enabled" and "nginx-datadog version: 1.7.0"
+
+**Trace Correlation Issues**: Verify nginx forwards trace headers with `proxy_set_header X-Datadog-Trace-Id $datadog_trace_id`
 
 ## Security Notes
 

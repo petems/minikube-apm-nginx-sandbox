@@ -60,6 +60,11 @@ func randomStatusHandler(w http.ResponseWriter, r *http.Request) {
 	span.SetTag("http.method", r.Method)
 	span.SetTag("http.url", r.URL.String())
 
+	// Extract trace and span IDs for enhanced logging visibility
+	spanContext := span.Context()
+	traceID := spanContext.TraceID()
+	spanID := spanContext.SpanID()
+
 	loge := log.
 		WithContext(sctx).
 		WithFields(logrus.Fields{
@@ -68,6 +73,11 @@ func randomStatusHandler(w http.ResponseWriter, r *http.Request) {
 			"remote_addr": r.RemoteAddr,
 			"request_id": requestID,
 			"user_agent": r.UserAgent(),
+			// Add both decimal and hex formats for easier correlation with nginx logs
+			"trace_id_dec": traceID,
+			"trace_id_hex": fmt.Sprintf("%016x", traceID),
+			"span_id_dec":  spanID,
+			"span_id_hex":  fmt.Sprintf("%016x", spanID),
 		})
 
 	// Set content type for JSON responses

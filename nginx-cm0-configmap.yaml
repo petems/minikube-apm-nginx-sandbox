@@ -1,6 +1,9 @@
 apiVersion: v1
 data:
   nginx.conf: |
+    # Load nginx-datadog module for enabling Datadog APM Traces for proxy
+    load_module /usr/lib/nginx/modules/ngx_http_datadog_module.so;
+
     error_log  /var/log/nginx/error.log notice;
     pid        /var/run/nginx.pid;
 
@@ -11,23 +14,22 @@ data:
     http {
         include       /etc/nginx/mime.types;
         default_type  application/octet-stream;
-
-        # Enhanced log format for potential trace correlation
-        log_format main_with_timing '$remote_addr - $remote_user [$time_local] "$request" '
-                                   '$status $body_bytes_sent $request_time '
-                                   '"$http_referer" "$http_user_agent" "$http_x_forwarded_for"';
+        # ref. https://docs.datadoghq.com/integrations/nginx/?tab=host#log-collection
+        log_format main_datadog '$remote_addr - $remote_user [$time_local] "$request" '
+                               '$status $body_bytes_sent $request_time '
+                               '"$http_referer" "$http_user_agent" "$http_x_forwarded_for" '
+                               'dd.trace_id="$datadog_trace_id" dd.span_id="$datadog_span_id"';
         
-        access_log  /var/log/nginx/access.log main_with_timing;
+        # Keep original format as backup
+        log_format main '$remote_addr - $remote_user [$time_local] '
+                      '"$request" $status $body_bytes_sent $request_time '
+                      '"$http_referer" "$http_user_agent" "$http_x_forwarded_for"';
+        
+        access_log  /var/log/nginx/access.log main_datadog;
         sendfile        on;
         keepalive_timeout  65;
 
-        # Upstream configuration for better load balancing
-        upstream api_backend {
-            server api:8080;
-            keepalive 32;
-        }
-
-        # Main server block
+        # Reverse proxy of `api` container
         server {
             listen       80;
             server_name  localhost;
@@ -39,28 +41,20 @@ data:
                 add_header Content-Type text/plain;
             }
 
-            # Main proxy location
             location / {
-                # Proxy headers for better communication
                 proxy_set_header Host $host;
                 proxy_set_header X-Real-IP $remote_addr;
-                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                proxy_set_header X-Forwarded-Proto $scheme;
-                
-                # Connection settings
-                proxy_http_version 1.1;
-                proxy_set_header Connection "";
-                
-                # Timeouts
-                proxy_connect_timeout 5s;
-                proxy_send_timeout 10s;
-                proxy_read_timeout 10s;
-                
-                proxy_pass http://api_backend;
+                # Forward Datadog trace context headers for distributed tracing
+                proxy_set_header X-Datadog-Trace-Id $datadog_trace_id;
+                proxy_set_header X-Datadog-Parent-Id $datadog_span_id;
+                proxy_set_header X-Datadog-Sampling-Priority "1";
+                proxy_pass http://api:8080;
             }
         }
 
-        # Status server for Datadog nginx integration
+        # Enabling http_stub_status_module
+        # so that dd-agent can collect nginx info
+        # ref. https://docs.datadoghq.com/integrations/nginx/?tab=host#prepare-nginx
         server {
             listen 81;
             server_name _;
@@ -69,12 +63,6 @@ data:
             location /nginx_status {
                 stub_status;
                 server_tokens on;
-                # Allow access from Datadog agent
-                allow 10.0.0.0/8;
-                allow 127.0.0.1;
-                allow 172.16.0.0/12;
-                allow 192.168.0.0/16;
-                deny all;
             }
 
             # Health check for status server
