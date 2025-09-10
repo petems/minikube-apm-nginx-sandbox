@@ -24,8 +24,12 @@ External Request → Nginx (traced) → Go API (traced) → Datadog Agent → Da
 
 **Build and deploy everything:**
 ```bash
-# Use envchain for secure API key management
+# Use envchain for secure API key management (recommended)
 envchain datadog env ./deploy.sh
+
+# Alternative: set API key manually
+export DD_API_KEY="your_datadog_api_key_here"
+./deploy.sh
 ```
 
 **Verify deployment:**

@@ -25,6 +25,39 @@ External Request → Nginx (traced) → Go API (traced) → Datadog Agent → Da
 
 ## Quick Start
 
+### Automated Deployment (Recommended)
+
+The fastest way to deploy everything with proper security:
+
+```bash
+# Use envchain for secure API key management (recommended)
+envchain datadog env ./deploy.sh
+```
+
+**Or set API key manually:**
+```bash
+export DD_API_KEY="your_datadog_api_key_here"
+./deploy.sh
+```
+
+**Verify everything is working:**
+```bash
+./verify-setup.sh
+```
+
+The automated deployment script will:
+- Check prerequisites (minikube, kubectl, helm, docker)
+- Start minikube (if not running)
+- Build and load Docker images with latest enhancements
+- Deploy Datadog Agent via Helm with proper configuration
+- Deploy all applications with health check endpoints
+- Set up port forwarding for immediate testing
+- Show verification commands and next steps
+
+### Manual Setup (Alternative)
+
+If you prefer step-by-step manual deployment:
+
 ### 1. Start Minikube
 
 ```bash
