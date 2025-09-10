@@ -5,17 +5,17 @@ metadata:
     # Enable Single Step APM instrumentation
     admission.datadoghq.com/enabled: "true"
   labels:
-    io.kompose.service: api
-    app: sample-api
+    io.kompose.service: golang-api
+    app: golang-api
     tags.datadoghq.com/env: "dev"
-    tags.datadoghq.com/service: "sample-api"
+    tags.datadoghq.com/service: "golang-api"
     tags.datadoghq.com/version: "0.1.0"
-  name: api
+  name: golang-api
 spec:
   replicas: 1
   selector:
     matchLabels:
-      io.kompose.service: api
+      io.kompose.service: golang-api
   template:
     metadata:
       annotations:
@@ -24,15 +24,15 @@ spec:
         # Specify which container to instrument
         admission.datadoghq.com/go-lib.version: "latest"
       labels:
-        io.kompose.service: api
-        app: sample-api
+        io.kompose.service: golang-api
+        app: golang-api
         tags.datadoghq.com/env: "dev"
-        tags.datadoghq.com/service: "sample-api"
+        tags.datadoghq.com/service: "golang-api"
         tags.datadoghq.com/version: "0.1.0"
     spec:
       containers:
-        - name: sample-api
-          image: api:latest
+        - name: golang-api
+          image: golang-api:latest
           imagePullPolicy: Never
           ports:
             - containerPort: 8080
@@ -42,7 +42,7 @@ spec:
             - name: DD_ENV
               value: "dev"
             - name: DD_SERVICE
-              value: "sample-api"
+              value: "golang-api"
             - name: DD_VERSION
               value: "0.1.0"
             - name: DD_AGENT_HOST

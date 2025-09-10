@@ -1,19 +1,27 @@
-# Nginx + Go API with End-to-End Datadog APM Tracing on Minikube
+# Nginx + Golang/Node.js APIs with End-to-End Datadog APM Tracing on Minikube
 
 This project demonstrates a complete end-to-end distributed tracing setup using:
 
-* **Nginx**: Reverse proxy with Datadog tracing module for request tracing
-* **Go API**: Application with native Datadog Go tracer integration  
+* **Nginx**: Reverse proxy with Datadog tracing module for request routing and tracing
+* **Golang API**: Application with native Datadog Go tracer integration  
+* **Node.js API**: Application with Datadog Node.js tracer integration
 * **Datadog Agent**: Deployed via Helm chart for trace collection and forwarding
 * **Minikube**: Local Kubernetes environment
 
 ## Architecture Overview
 
 ```
-External Request → Nginx (traced) → Go API (traced) → Datadog Agent → Datadog UI
+External Request → Nginx (traced) → Golang API (traced) → Datadog Agent → Datadog UI
+                    ↓
+                Node.js API (traced)
 ```
 
-**Trace Correlation**: Nginx creates root spans with full 128-bit trace IDs and forwards trace context headers to the Go API, which continues the same trace as child spans. Enhanced logging shows both decimal and hexadecimal formats for easy correlation.
+**Service Endpoints**:
+- `http://localhost:8080/` → Golang API (backward compatibility)
+- `http://localhost:8080/golang-api/` → Golang API
+- `http://localhost:8080/nodejs-api/` → Node.js API
+
+**Trace Correlation**: Nginx creates root spans with full 128-bit trace IDs and forwards trace context headers to both APIs, which continue the same trace as child spans. Enhanced logging shows both decimal and hexadecimal formats for easy correlation.
 
 ## Prerequisites
 
@@ -48,7 +56,7 @@ export DD_API_KEY="your_datadog_api_key_here"
 The automated deployment script will:
 - Check prerequisites (minikube, kubectl, helm, docker)
 - Start minikube (if not running)
-- Build and load Docker images with latest enhancements
+- Build and load Docker images for both Golang and Node.js APIs
 - Deploy Datadog Agent via Helm with proper configuration
 - Deploy all applications with health check endpoints
 - Set up port forwarding for immediate testing
@@ -66,12 +74,20 @@ minikube start
 
 ### 2. Build Application Images
 
-Build the Go API image:
+Build the Golang API image:
 ```bash
-cd api
-docker build -t api .
+cd golang-api
+docker build -t golang-api .
 # Load image into minikube
-minikube image load api
+minikube image load golang-api
+```
+
+Build the Node.js API image:
+```bash
+cd nodejs-api
+docker build -t nodejs-api .
+# Load image into minikube
+minikube image load nodejs-api
 ```
 
 Build the Nginx image with Datadog module:
@@ -111,10 +127,16 @@ datadog-agent-cluster-agent-6f446955b4-zjl55        1/1     Running   0         
 
 ### 5. Deploy Applications
 
-Deploy the Go API:
+Deploy the Golang API:
 ```bash
-kubectl apply -f api-deployment.yaml
-kubectl apply -f api-service.yaml
+kubectl apply -f golang-api-deployment.yaml
+kubectl apply -f golang-api-service.yaml
+```
+
+Deploy the Node.js API:
+```bash
+kubectl apply -f nodejs-api-deployment.yaml
+kubectl apply -f nodejs-api-service.yaml
 ```
 
 Deploy Nginx:
@@ -134,7 +156,8 @@ kubectl get pods
 You should see output similar to:
 ```
 NAME                                                READY   STATUS    RESTARTS   AGE
-api-7d4b8c8f4d-x9z2m                               1/1     Running   0          30s
+golang-api-7d4b8c8f4d-x9z2m                        1/1     Running   0          30s
+nodejs-api-8e5c9d6f3g-y8w1n                        1/1     Running   0          30s
 datadog-agent-2bgmt                                 3/3     Running   0          5m
 datadog-agent-cluster-agent-6f446955b4-zjl55        1/1     Running   0          5m
 nginx-6b8d4c5f7d-k8p9n                             1/1     Running   0          30s
@@ -150,21 +173,28 @@ minikube service nginx --url
 This will output a URL like `http://192.168.49.2:30080`. Open this in your browser or use curl:
 
 ```bash
-# Test the application
-curl $(minikube service nginx --url)
+# Test the Golang API
+curl $(minikube service nginx --url)/golang-api/
+
+# Test the Node.js API
+curl $(minikube service nginx --url)/nodejs-api/
+
+# Test backward compatibility (routes to Golang API)
+curl $(minikube service nginx --url)/
 
 # Generate multiple requests to create traces
-for i in {1..10}; do 
-  curl $(minikube service nginx --url)
+for i in {1..5}; do 
+  curl $(minikube service nginx --url)/golang-api/
+  curl $(minikube service nginx --url)/nodejs-api/
   sleep 1
 done
 ```
 
 ## Application Details
 
-### Go API (`api/main.go`)
+### Golang API (`golang-api/main.go`)
 
-The Go application:
+The Golang application:
 * Uses `dd-trace-go` for native Datadog tracing with automatic trace context extraction
 * Enhanced structured logging with dual-format trace/span IDs (decimal and hexadecimal)
 * Dedicated `/health` endpoint for reliable Kubernetes health checks
@@ -172,7 +202,24 @@ The Go application:
 * Includes comprehensive trace tags, error handling, and request correlation
 
 Key features:
-- **Service**: `sample-api`
+- **Service**: `golang-api`
+- **Environment**: `dev`  
+- **Version**: `0.1.0`
+- **Endpoints**: 
+  - `/` (random responses for tracing demo - 50% success, 30% client errors, 20% server errors)
+  - `/health` (always returns 200 OK for Kubernetes health checks)
+
+### Node.js API (`nodejs-api/server.js`)
+
+The Node.js application:
+* Uses `dd-trace` for native Datadog tracing with automatic trace context extraction
+* Express.js server with structured logging using Winston
+* Same behavior as Golang API for direct comparison
+* Dedicated `/health` endpoint for reliable Kubernetes health checks
+* Generates realistic success/error responses matching Golang API patterns
+
+Key features:
+- **Service**: `nodejs-api`
 - **Environment**: `dev`  
 - **Version**: `0.1.0`
 - **Endpoints**: 
@@ -185,8 +232,14 @@ The Nginx reverse proxy:
 * Uses the official Datadog nginx module v1.7.0 for distributed tracing
 * Automatically creates root spans and forwards trace context headers (`X-Datadog-Trace-Id`, `X-Datadog-Parent-Id`, `X-Datadog-Sampling-Priority`)
 * Enhanced log formatting with `$datadog_trace_id` and `$datadog_span_id` variables
-* Proper trace correlation with downstream Go API service
+* Routes traffic to both Golang and Node.js APIs based on URL path
+* Proper trace correlation with downstream API services
 * Architecture-specific module installation (amd64/arm64 support)
+
+**Routing Configuration**:
+- `/golang-api/` → `http://golang-api:8080/`
+- `/nodejs-api/` → `http://nodejs-api:3000/`
+- `/` → `http://golang-api:8080/` (backward compatibility)
 
 **Reference Documentation:**
 * [Official Datadog Nginx Tracing Guide](https://docs.datadoghq.com/tracing/trace_collection/proxy_setup/nginx/)
@@ -211,29 +264,38 @@ Optimized for Minikube with:
 
 ### Check Single Step Instrumentation
 
-For applications using Single Step APM (enabled for Go), verify the injection:
+For applications using Single Step APM (enabled for both APIs), verify the injection:
 
 ```bash
-# Check for Datadog annotations on API pod
-kubectl describe pod -l app=sample-api | grep -A 5 -B 5 admission.datadoghq.com
+# Check for Datadog annotations on Golang API pod
+kubectl describe pod -l app=golang-api | grep -A 5 -B 5 admission.datadoghq.com
+
+# Check for Datadog annotations on Node.js API pod
+kubectl describe pod -l app=nodejs-api | grep -A 5 -B 5 admission.datadoghq.com
 
 # Check environment variables
-kubectl describe pod -l app=sample-api | grep -A 10 -B 5 "DD_"
+kubectl describe pod -l app=golang-api | grep -A 10 -B 5 "DD_"
+kubectl describe pod -l app=nodejs-api | grep -A 10 -B 5 "DD_"
 ```
 
 ### Check Trace Flow
 
-1. **API Traces**: Verify the Go API is sending traces:
+1. **Golang API Traces**: Verify the Golang API is sending traces:
 ```bash
-kubectl logs -l app=sample-api | grep -i trace
+kubectl logs -l app=golang-api | grep -i trace
 ```
 
-2. **Nginx Traces**: Check nginx trace correlation:
+2. **Node.js API Traces**: Verify the Node.js API is sending traces:
+```bash
+kubectl logs -l app=nodejs-api | grep -i trace
+```
+
+3. **Nginx Traces**: Check nginx trace correlation:
 ```bash
 kubectl logs -l app=sample-nginx | grep "dd.trace_id"
 ```
 
-3. **Datadog Agent**: Verify agent is receiving traces:
+4. **Datadog Agent**: Verify agent is receiving traces:
 ```bash
 kubectl logs -l app.kubernetes.io/name=datadog | grep -i trace
 ```
@@ -242,11 +304,11 @@ kubectl logs -l app.kubernetes.io/name=datadog | grep -i trace
 
 Check component health:
 ```bash
-# Nginx health
-curl $(minikube service nginx --url)/health
+# Golang API health
+curl $(minikube service nginx --url)/golang-api/health
 
-# API health (through nginx)
-curl $(minikube service nginx --url)/
+# Node.js API health
+curl $(minikube service nginx --url)/nodejs-api/health
 
 # Nginx status (for monitoring)
 curl $(minikube service nginx --url):81/nginx_status
@@ -256,7 +318,7 @@ curl $(minikube service nginx --url):81/nginx_status
 
 **Pods not starting**: Check image availability in minikube:
 ```bash
-minikube image ls | grep -E "(api|sample-nginx)"
+minikube image ls | grep -E "(golang-api|nodejs-api|sample-nginx)"
 ```
 
 **No traces in Datadog**: 
@@ -274,9 +336,10 @@ minikube image ls | grep -E "(api|sample-nginx)"
 Once traces are flowing, you can:
 
 1. **View APM Traces**: Go to APM → Traces in Datadog UI
-2. **Service Map**: See the relationship between nginx → api services
+2. **Service Map**: See the relationship between nginx → golang-api and nginx → nodejs-api services
 3. **Log Correlation**: Click on traces to see correlated logs
 4. **Infrastructure**: Monitor Kubernetes cluster and pod metrics
+5. **Performance Comparison**: Compare response times and error rates between Go and Node.js implementations
 
 ## Trace Correlation Example
 
@@ -285,11 +348,11 @@ When a request flows through the system:
 1. **Nginx** creates a root span with 128-bit trace ID `68c194b700000000414c17f0a72717c6`
 2. **Nginx logs** include: `dd.trace_id="68c194b700000000414c17f0a72717c6" dd.span_id="414c17f0a72717c6"`
 3. **Nginx forwards** trace headers: `X-Datadog-Trace-Id`, `X-Datadog-Parent-Id`, `X-Datadog-Sampling-Priority`  
-4. **Go API** extracts trace context and continues the same trace as child span
+4. **Golang/Node.js API** extracts trace context and continues the same trace as child span
 5. **API logs** include correlated IDs: `"trace_id_hex":"414c17f0a72717c6" "span_id_hex":"65b0927be4a29005"`
 6. **Datadog UI** shows the complete distributed trace with parent-child span relationships
 
-**Result**: Complete end-to-end visibility from nginx proxy through Go API with matching trace correlation.
+**Result**: Complete end-to-end visibility from nginx proxy through both API services with matching trace correlation and performance comparison capabilities.
 
 ## Log-to-Trace Correlation in Datadog
 
@@ -310,7 +373,10 @@ The dual hex/decimal format we added to the Go API logs is a debugging enhanceme
 ## Configuration Files
 
 - `datadog-values.yaml`: Helm values for Datadog agent deployment
-- `api-deployment.yaml`: Go API Kubernetes deployment with Datadog configuration
+- `golang-api-deployment.yaml`: Golang API Kubernetes deployment with Datadog configuration
+- `golang-api-service.yaml`: Golang API Kubernetes service
+- `nodejs-api-deployment.yaml`: Node.js API Kubernetes deployment with Datadog configuration
+- `nodejs-api-service.yaml`: Node.js API Kubernetes service
 - `nginx-deployment.yaml`: Nginx deployment with tracing enabled
 - `nginx-cm0-configmap.yaml`: Nginx configuration with Datadog module setup
 - Service files: Kubernetes services for networking
@@ -319,10 +385,11 @@ The dual hex/decimal format we added to the Go API logs is a debugging enhanceme
 
 To modify the applications:
 
-1. **Go API**: Edit `api/main.go`, rebuild with `docker build -t api .`
-2. **Nginx**: Edit `nginx/Dockerfile` or nginx config, rebuild with `docker build -t sample-nginx .`  
-3. **Reload images**: `minikube image load <image-name>`
-4. **Restart deployments**: `kubectl rollout restart deployment/<deployment-name>`
+1. **Golang API**: Edit `golang-api/main.go`, rebuild with `docker build -t golang-api .`
+2. **Node.js API**: Edit `nodejs-api/server.js`, rebuild with `docker build -t nodejs-api .`
+3. **Nginx**: Edit `nginx/Dockerfile` or nginx config, rebuild with `docker build -t sample-nginx .`  
+4. **Reload images**: `minikube image load <image-name>`
+5. **Restart deployments**: `kubectl rollout restart deployment/<deployment-name>`
 
 ## Automated Scripts
 
@@ -341,7 +408,7 @@ export DD_API_KEY="your_datadog_api_key_here"
 
 This script will:
 - Start minikube (if not running)
-- Build and load Docker images  
+- Build and load Docker images for both APIs
 - Deploy Datadog Agent via Helm
 - Deploy all applications
 - Wait for everything to be ready
@@ -370,7 +437,8 @@ If you prefer manual deployment, follow the Quick Start section above.
 Remove all components:
 ```bash
 # Remove applications
-kubectl delete -f api-deployment.yaml -f api-service.yaml
+kubectl delete -f golang-api-deployment.yaml -f golang-api-service.yaml
+kubectl delete -f nodejs-api-deployment.yaml -f nodejs-api-service.yaml
 kubectl delete -f nginx-deployment.yaml -f nginx-service.yaml -f nginx-cm0-configmap.yaml
 
 # Remove Datadog agent
@@ -386,7 +454,8 @@ minikube stop
 Or use the cleanup portion of the deploy script:
 ```bash
 # Quick cleanup (add this to deploy.sh if needed)
-kubectl delete deployment,service,configmap -l app=sample-api
+kubectl delete deployment,service,configmap -l app=golang-api
+kubectl delete deployment,service,configmap -l app=nodejs-api
 kubectl delete deployment,service,configmap -l app=sample-nginx
 helm uninstall datadog-agent
 kubectl delete secret datadog-secret

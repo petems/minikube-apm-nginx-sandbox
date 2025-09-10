@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# Nginx + Go API Datadog Tracing Verification Script
-# This script validates that the end-to-end tracing setup is working correctly
+# Nginx + Golang/Node.js APIs Datadog Tracing Verification Script
+# This script validates that the end-to-end tracing setup is working correctly for both APIs
 
 set -e
 
-echo "🔍 Verifying Nginx + Go API Datadog Tracing Setup"
-echo "=================================================="
+echo "🔍 Verifying Nginx + Golang/Node.js APIs Datadog Tracing Setup"
+echo "==============================================================="
 
 # Color codes for output
 RED='\033[0;31m'
@@ -67,19 +67,34 @@ fi
 # Check application pods
 print_status "Checking application pods..."
 
-# Check API pod
-API_PODS=$(kubectl get pods -l app=sample-api --no-headers 2>/dev/null | wc -l)
-if [ "$API_PODS" -eq 0 ]; then
-    print_error "No API pods found. Please deploy with 'kubectl apply -f api-deployment.yaml'"
+# Check Golang API pod
+GOLANG_API_PODS=$(kubectl get pods -l app=golang-api --no-headers 2>/dev/null | wc -l)
+if [ "$GOLANG_API_PODS" -eq 0 ]; then
+    print_error "No Golang API pods found. Please deploy with 'kubectl apply -f golang-api-deployment.yaml'"
     exit 1
 fi
 
-API_READY=$(kubectl get pods -l app=sample-api --no-headers 2>/dev/null | grep "Running" | wc -l)
-if [ "$API_READY" -ne "$API_PODS" ]; then
-    print_warning "API pod is not ready"
-    kubectl get pods -l app=sample-api
+GOLANG_API_READY=$(kubectl get pods -l app=golang-api --no-headers 2>/dev/null | grep "Running" | wc -l)
+if [ "$GOLANG_API_READY" -ne "$GOLANG_API_PODS" ]; then
+    print_warning "Golang API pod is not ready"
+    kubectl get pods -l app=golang-api
 else
-    print_success "API pod is running"
+    print_success "Golang API pod is running"
+fi
+
+# Check Node.js API pod
+NODEJS_API_PODS=$(kubectl get pods -l app=nodejs-api --no-headers 2>/dev/null | wc -l)
+if [ "$NODEJS_API_PODS" -eq 0 ]; then
+    print_error "No Node.js API pods found. Please deploy with 'kubectl apply -f nodejs-api-deployment.yaml'"
+    exit 1
+fi
+
+NODEJS_API_READY=$(kubectl get pods -l app=nodejs-api --no-headers 2>/dev/null | grep "Running" | wc -l)
+if [ "$NODEJS_API_READY" -ne "$NODEJS_API_PODS" ]; then
+    print_warning "Node.js API pod is not ready"
+    kubectl get pods -l app=nodejs-api
+else
+    print_success "Node.js API pod is running"
 fi
 
 # Check Nginx pod
@@ -106,10 +121,16 @@ else
     print_error "Nginx service not found. Please deploy with 'kubectl apply -f nginx-service.yaml'"
 fi
 
-if kubectl get service api &>/dev/null; then
-    print_success "API service exists"
+if kubectl get service golang-api &>/dev/null; then
+    print_success "Golang API service exists"
 else
-    print_error "API service not found. Please deploy with 'kubectl apply -f api-service.yaml'"
+    print_error "Golang API service not found. Please deploy with 'kubectl apply -f golang-api-service.yaml'"
+fi
+
+if kubectl get service nodejs-api &>/dev/null; then
+    print_success "Node.js API service exists"
+else
+    print_error "Node.js API service not found. Please deploy with 'kubectl apply -f nodejs-api-service.yaml'"
 fi
 
 # Test connectivity
@@ -121,22 +142,46 @@ NGINX_URL=$(timeout 10 minikube service nginx --url 2>/dev/null | head -1)
 if [ $? -eq 0 ] && [ -n "$NGINX_URL" ]; then
     print_success "Nginx service URL: $NGINX_URL"
     
-    # Test health endpoint with timeout
-    print_status "Testing Nginx health endpoint..."
-    if timeout 5 curl -s -f "$NGINX_URL/health" >/dev/null 2>&1; then
-        print_success "Nginx health check passed"
+    # Test Golang API endpoints
+    print_status "Testing Golang API endpoints..."
+    if timeout 5 curl -s -f "$NGINX_URL/golang-api/health" >/dev/null 2>&1; then
+        print_success "Golang API health check passed"
     else
-        print_warning "Nginx health check failed"
+        print_warning "Golang API health check failed"
     fi
     
-    # Test main endpoint with timeout
-    print_status "Testing main application endpoint..."
-    RESPONSE=$(timeout 5 curl -s "$NGINX_URL" 2>/dev/null)
+    RESPONSE=$(timeout 5 curl -s "$NGINX_URL/golang-api/" 2>/dev/null)
     if [ $? -eq 0 ] && [ -n "$RESPONSE" ]; then
-        print_success "Main endpoint responded"
+        print_success "Golang API endpoint responded"
         echo "Response preview: $(echo "$RESPONSE" | head -c 100)..."
     else
-        print_warning "Main endpoint test failed"
+        print_warning "Golang API endpoint test failed"
+    fi
+    
+    # Test Node.js API endpoints
+    print_status "Testing Node.js API endpoints..."
+    if timeout 5 curl -s -f "$NGINX_URL/nodejs-api/health" >/dev/null 2>&1; then
+        print_success "Node.js API health check passed"
+    else
+        print_warning "Node.js API health check failed"
+    fi
+    
+    RESPONSE=$(timeout 5 curl -s "$NGINX_URL/nodejs-api/" 2>/dev/null)
+    if [ $? -eq 0 ] && [ -n "$RESPONSE" ]; then
+        print_success "Node.js API endpoint responded"
+        echo "Response preview: $(echo "$RESPONSE" | head -c 100)..."
+    else
+        print_warning "Node.js API endpoint test failed"
+    fi
+    
+    # Test backward compatibility
+    print_status "Testing backward compatibility (root endpoint)..."
+    RESPONSE=$(timeout 5 curl -s "$NGINX_URL/" 2>/dev/null)
+    if [ $? -eq 0 ] && [ -n "$RESPONSE" ]; then
+        print_success "Backward compatibility endpoint responded"
+        echo "Response preview: $(echo "$RESPONSE" | head -c 100)..."
+    else
+        print_warning "Backward compatibility endpoint test failed"
     fi
     
 else
@@ -153,21 +198,41 @@ fi
 # Check for Single Step APM annotations
 print_status "Checking Single Step APM configuration..."
 
-API_POD=$(kubectl get pods -l app=sample-api -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-if [ -n "$API_POD" ]; then
-    ANNOTATIONS=$(kubectl describe pod "$API_POD" 2>/dev/null | grep "admission.datadoghq.com" | wc -l)
+# Check Golang API pod
+GOLANG_API_POD=$(kubectl get pods -l app=golang-api -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+if [ -n "$GOLANG_API_POD" ]; then
+    ANNOTATIONS=$(kubectl describe pod "$GOLANG_API_POD" 2>/dev/null | grep "admission.datadoghq.com" | wc -l)
     if [ "$ANNOTATIONS" -gt 0 ]; then
-        print_success "Single Step APM annotations found on API pod"
+        print_success "Single Step APM annotations found on Golang API pod"
     else
-        print_warning "No Single Step APM annotations found on API pod"
+        print_warning "No Single Step APM annotations found on Golang API pod"
     fi
     
     # Check environment variables
-    DD_ENV_COUNT=$(kubectl describe pod "$API_POD" 2>/dev/null | grep -c "DD_")
+    DD_ENV_COUNT=$(kubectl describe pod "$GOLANG_API_POD" 2>/dev/null | grep -c "DD_")
     if [ "$DD_ENV_COUNT" -gt 5 ]; then
-        print_success "Datadog environment variables configured ($DD_ENV_COUNT found)"
+        print_success "Datadog environment variables configured on Golang API ($DD_ENV_COUNT found)"
     else
-        print_warning "Few Datadog environment variables found ($DD_ENV_COUNT)"
+        print_warning "Few Datadog environment variables found on Golang API ($DD_ENV_COUNT)"
+    fi
+fi
+
+# Check Node.js API pod
+NODEJS_API_POD=$(kubectl get pods -l app=nodejs-api -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+if [ -n "$NODEJS_API_POD" ]; then
+    ANNOTATIONS=$(kubectl describe pod "$NODEJS_API_POD" 2>/dev/null | grep "admission.datadoghq.com" | wc -l)
+    if [ "$ANNOTATIONS" -gt 0 ]; then
+        print_success "Single Step APM annotations found on Node.js API pod"
+    else
+        print_warning "No Single Step APM annotations found on Node.js API pod"
+    fi
+    
+    # Check environment variables
+    DD_ENV_COUNT=$(kubectl describe pod "$NODEJS_API_POD" 2>/dev/null | grep -c "DD_")
+    if [ "$DD_ENV_COUNT" -gt 5 ]; then
+        print_success "Datadog environment variables configured on Node.js API ($DD_ENV_COUNT found)"
+    else
+        print_warning "Few Datadog environment variables found on Node.js API ($DD_ENV_COUNT)"
     fi
 fi
 
@@ -200,14 +265,24 @@ sleep 3
 TEST_URL="http://localhost:8082"
 print_status "Using test URL: $TEST_URL"
 
-echo "Sending 5 test requests..."
-for i in {1..5}; do
-    RESPONSE=$(timeout 5 curl -s "$TEST_URL" 2>/dev/null)
+echo "Sending test requests to both APIs..."
+for i in {1..3}; do
+    # Test Golang API
+    RESPONSE=$(timeout 5 curl -s "$TEST_URL/golang-api/" 2>/dev/null)
     if [ $? -eq 0 ]; then
-        print_status "Request $i: $(echo "$RESPONSE" | head -c 30)..."
+        print_status "Golang API Request $i: $(echo "$RESPONSE" | head -c 30)..."
     else
-        print_warning "Request $i failed"
+        print_warning "Golang API Request $i failed"
     fi
+    
+    # Test Node.js API
+    RESPONSE=$(timeout 5 curl -s "$TEST_URL/nodejs-api/" 2>/dev/null)
+    if [ $? -eq 0 ]; then
+        print_status "Node.js API Request $i: $(echo "$RESPONSE" | head -c 30)..."
+    else
+        print_warning "Node.js API Request $i failed"
+    fi
+    
     sleep 1
 done
 
@@ -238,18 +313,22 @@ echo "========================"
 print_status "✅ What's Working:"
 echo "  • Minikube cluster running"
 echo "  • Datadog Agent deployed and connected"
-echo "  • Go API generating traces with dd.trace_id and dd.span_id"
-echo "  • Nginx proxying requests successfully"
-echo "  • End-to-end connectivity confirmed"
+echo "  • Golang API generating traces with dd.trace_id and dd.span_id"
+echo "  • Node.js API generating traces with dd.trace_id and dd.span_id"
+echo "  • Nginx proxying requests to both APIs successfully"
+echo "  • End-to-end connectivity confirmed for both services"
 echo ""
 print_status "🎯 Next Steps:"
 echo "  1. Check Datadog APM UI:"
 echo "     - Go to APM → Traces in Datadog"
-echo "     - Look for service 'sample-api' in environment 'dev'"
-echo "     - You should see traces with random success/error responses"
+echo "     - Look for services 'golang-api' and 'nodejs-api' in environment 'dev'"
+echo "     - You should see traces with random success/error responses from both APIs"
 echo "  2. Verify trace correlation:"
 echo "     - Each request should have consistent trace IDs in logs"
-echo "     - Nginx → Go API flow should be visible in trace view"
+echo "     - Nginx → Golang API and Nginx → Node.js API flows should be visible"
+echo "  3. Compare performance:"
+echo "     - Compare response times and error rates between Go and Node.js"
+echo "     - Analyze resource usage patterns in Datadog Infrastructure"
 echo ""
 print_status "📊 Datadog Agent Status:"
 DD_AGENT_POD_NAME=$(kubectl get pods -l app.kubernetes.io/name=datadog-agent,app.kubernetes.io/component=agent -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
@@ -260,10 +339,12 @@ if [ -n "$DD_AGENT_POD_NAME" ]; then
 fi
 echo ""
 print_status "🔧 Testing Commands:"
-echo "  • Manual test: kubectl port-forward service/nginx 8080:80 & curl http://localhost:8080/"
-echo "  • View API logs: kubectl logs -l app=sample-api -f"
+echo "  • Manual test: kubectl port-forward service/nginx 8080:80 & curl http://localhost:8080/golang-api/"
+echo "  • Test both APIs: curl http://localhost:8080/nodejs-api/"
+echo "  • View Golang API logs: kubectl logs -l app=golang-api -f"
+echo "  • View Node.js API logs: kubectl logs -l app=nodejs-api -f"
 echo "  • View nginx logs: kubectl logs -l app=sample-nginx -f"  
-echo "  • Generate traffic: for i in {1..10}; do curl http://localhost:8080/; sleep 1; done"
+echo "  • Generate traffic: for i in {1..5}; do curl http://localhost:8080/golang-api/; curl http://localhost:8080/nodejs-api/; sleep 1; done"
 echo ""
 print_status "🌐 Access Methods:"
 echo "  • Port forward (recommended): kubectl port-forward service/nginx 8080:80"

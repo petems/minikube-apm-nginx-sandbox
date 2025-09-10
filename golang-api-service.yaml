@@ -2,12 +2,12 @@ apiVersion: v1
 kind: Service
 metadata:
   labels:
-    io.kompose.service: api
-    app: sample-api
+    io.kompose.service: golang-api
+    app: golang-api
     tags.datadoghq.com/env: "dev"
-    tags.datadoghq.com/service: "sample-api"
+    tags.datadoghq.com/service: "golang-api"
     tags.datadoghq.com/version: "0.1.0"
-  name: api
+  name: golang-api
 spec:
   type: ClusterIP
   ports:
@@ -16,4 +16,4 @@ spec:
       targetPort: 8080
       protocol: TCP
   selector:
-    io.kompose.service: api
+    io.kompose.service: golang-api

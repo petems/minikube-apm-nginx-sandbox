@@ -69,15 +69,27 @@ print_success "Minikube is running"
 # Build and load images
 print_status "Building and loading application images..."
 
-print_status "Building Go API image..."
-if [ -d "api" ]; then
-    cd api
-    docker build -t api .
-    minikube image load api
+print_status "Building Golang API image..."
+if [ -d "golang-api" ]; then
+    cd golang-api
+    docker build -t golang-api .
+    minikube image load golang-api
     cd ..
-    print_success "API image built and loaded"
+    print_success "Golang API image built and loaded"
 else
-    print_error "api directory not found. Please run this script from the project root."
+    print_error "golang-api directory not found. Please run this script from the project root."
+    exit 1
+fi
+
+print_status "Building Node.js API image..."
+if [ -d "nodejs-api" ]; then
+    cd nodejs-api
+    docker build -t nodejs-api .
+    minikube image load nodejs-api
+    cd ..
+    print_success "Node.js API image built and loaded"
+else
+    print_error "nodejs-api directory not found. Please run this script from the project root."
     exit 1
 fi
 
@@ -136,10 +148,15 @@ kubectl apply -f nginx-cm0-configmap.yaml
 print_success "Nginx ConfigMap deployed"
 
 # Deploy applications
-print_status "Deploying Go API..."
-kubectl apply -f api-deployment.yaml
-kubectl apply -f api-service.yaml
-print_success "Go API deployed"
+print_status "Deploying Golang API..."
+kubectl apply -f golang-api-deployment.yaml
+kubectl apply -f golang-api-service.yaml
+print_success "Golang API deployed"
+
+print_status "Deploying Node.js API..."
+kubectl apply -f nodejs-api-deployment.yaml
+kubectl apply -f nodejs-api-service.yaml
+print_success "Node.js API deployed"
 
 print_status "Deploying Nginx..."
 kubectl apply -f nginx-deployment.yaml
@@ -148,7 +165,8 @@ print_success "Nginx deployed"
 
 # Wait for applications to be ready
 print_status "Waiting for applications to be ready..."
-kubectl wait --for=condition=available --timeout=300s deployment api
+kubectl wait --for=condition=available --timeout=300s deployment golang-api
+kubectl wait --for=condition=available --timeout=300s deployment nodejs-api
 kubectl wait --for=condition=available --timeout=300s deployment nginx
 print_success "All applications are ready"
 
@@ -177,19 +195,25 @@ echo "  • Port forward (recommended): http://localhost:8080"
 echo "  • Alternative: minikube service nginx --url (may hang on some systems)"
 echo ""
 print_status "🧪 Testing Commands:"
-echo "  • Test health: curl http://localhost:8080/health"
-echo "  • Test application: curl http://localhost:8080/"
+echo "  • Test Golang API health: curl http://localhost:8080/golang-api/health"
+echo "  • Test Node.js API health: curl http://localhost:8080/nodejs-api/health"
+echo "  • Test Golang API: curl http://localhost:8080/golang-api/"
+echo "  • Test Node.js API: curl http://localhost:8080/nodejs-api/"
+echo "  • Test backward compatibility: curl http://localhost:8080/"
 echo "  • Generate test traffic:"
-echo "    for i in {1..10}; do curl http://localhost:8080/; sleep 1; done"
+echo "    for i in {1..5}; do curl http://localhost:8080/golang-api/; sleep 1; done"
+echo "    for i in {1..5}; do curl http://localhost:8080/nodejs-api/; sleep 1; done"
 echo ""
 print_status "📊 Verification:"
 echo "  1. Run verification script: ./verify-setup.sh"
-echo "  2. Check Datadog APM UI for 'sample-api' service in 'dev' environment"
-echo "  3. Look for traces with random success/error responses"
+echo "  2. Check Datadog APM UI for 'golang-api' and 'nodejs-api' services in 'dev' environment"
+echo "  3. Look for traces with random success/error responses from both APIs"
+echo "  4. Compare performance metrics between Go and Node.js implementations"
 echo ""
 print_status "🔧 Useful Commands:"
 echo "  • View all pods: kubectl get pods"
-echo "  • View API logs: kubectl logs -l app=sample-api -f"
+echo "  • View Golang API logs: kubectl logs -l app=golang-api -f"
+echo "  • View Node.js API logs: kubectl logs -l app=nodejs-api -f"
 echo "  • View nginx logs: kubectl logs -l app=sample-nginx -f"
 echo "  • View Datadog agent status: kubectl exec -it \$(kubectl get pods -l app.kubernetes.io/component=agent -o jsonpath='{.items[0].metadata.name}') -c agent -- agent status"
 echo "  • Stop port forward: kill $PORT_FORWARD_PID"

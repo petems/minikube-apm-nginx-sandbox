@@ -29,26 +29,52 @@ data:
         sendfile        on;
         keepalive_timeout  65;
 
-        # Reverse proxy of `api` container
+        # Reverse proxy configuration
         server {
             listen       80;
             server_name  localhost;
 
-            # Health check endpoint
-            location /health {
-                access_log off;
-                return 200 "healthy\n";
-                add_header Content-Type text/plain;
-            }
-
-            location / {
+            # Route golang-api requests to golang-api service
+            location /golang-api/ {
                 proxy_set_header Host $host;
                 proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
                 # Forward Datadog trace context headers for distributed tracing
                 proxy_set_header X-Datadog-Trace-Id $datadog_trace_id;
                 proxy_set_header X-Datadog-Parent-Id $datadog_span_id;
                 proxy_set_header X-Datadog-Sampling-Priority "1";
-                proxy_pass http://api:8080;
+                # Remove /golang-api prefix when forwarding to backend
+                rewrite ^/golang-api/(.*) /$1 break;
+                proxy_pass http://golang-api:8080;
+            }
+
+            # Route nodejs-api requests to nodejs-api service
+            location /nodejs-api/ {
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                # Forward Datadog trace context headers for distributed tracing
+                proxy_set_header X-Datadog-Trace-Id $datadog_trace_id;
+                proxy_set_header X-Datadog-Parent-Id $datadog_span_id;
+                proxy_set_header X-Datadog-Sampling-Priority "1";
+                # Remove /nodejs-api prefix when forwarding to backend
+                rewrite ^/nodejs-api/(.*) /$1 break;
+                proxy_pass http://nodejs-api:3000;
+            }
+
+            # Default route for backward compatibility (routes to golang-api)
+            location / {
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                # Forward Datadog trace context headers for distributed tracing
+                proxy_set_header X-Datadog-Trace-Id $datadog_trace_id;
+                proxy_set_header X-Datadog-Parent-Id $datadog_span_id;
+                proxy_set_header X-Datadog-Sampling-Priority "1";
+                proxy_pass http://golang-api:8080;
             }
         }
 

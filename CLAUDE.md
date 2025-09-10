@@ -13,7 +13,7 @@ External Request → Nginx (traced) → Go API (traced) → Datadog Agent → Da
 ```
 
 **Core Components:**
-- **Go API** (`api/`): Instrumented with dd-trace-go v1.52.0, generates structured JSON logs with trace correlation, includes dual-format trace IDs (decimal/hex) for easy debugging
+- **Golang API** (`golang-api/`): Instrumented with dd-trace-go v1.52.0, generates structured JSON logs with trace correlation, includes dual-format trace IDs (decimal/hex) for easy debugging
 - **Nginx Reverse Proxy** (`nginx/`): Custom image with Datadog HTTP module v1.7.0 for complete distributed tracing with header propagation
 - **Datadog Agent**: Deployed via Helm chart with Single Step APM instrumentation enabled
 - **Kubernetes Manifests**: Complete deployment configurations for Minikube with health check endpoints
@@ -86,7 +86,7 @@ make stress  # Uses vegeta for load testing (requires vegeta installed)
 
 ## Code Architecture
 
-### Go Application (`api/`)
+### Golang Application (`golang-api/`)
 
 **Key Files:**
 - `main.go`: HTTP server with Datadog tracing using gorilla/mux and dd-trace-go
