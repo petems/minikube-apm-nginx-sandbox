@@ -14,6 +14,7 @@ data:
     http {
         include       /etc/nginx/mime.types;
         default_type  application/octet-stream;
+        
         # ref. https://docs.datadoghq.com/integrations/nginx/?tab=host#log-collection
         log_format main_datadog '$remote_addr - $remote_user [$time_local] "$request" '
                                '$status $body_bytes_sent $request_time '
@@ -29,7 +30,7 @@ data:
         sendfile        on;
         keepalive_timeout  65;
 
-        # Reverse proxy of `api` container
+        # Reverse proxy configuration
         server {
             listen       80;
             server_name  localhost;
@@ -44,10 +45,8 @@ data:
             location / {
                 proxy_set_header Host $host;
                 proxy_set_header X-Real-IP $remote_addr;
-                # Forward Datadog trace context headers for distributed tracing
-                proxy_set_header X-Datadog-Trace-Id $datadog_trace_id;
-                proxy_set_header X-Datadog-Parent-Id $datadog_span_id;
-                proxy_set_header X-Datadog-Sampling-Priority "1";
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
                 proxy_pass http://api:8080;
             }
         }
