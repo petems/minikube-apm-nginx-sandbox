@@ -5,12 +5,16 @@
   "type": "module",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "jest"
   },
   "dependencies": {
-    "bunyan": "^1.8.15",
+    "winston": "^3.17.0",
     "dd-trace": "^5.67.0",
     "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
   },
   "engines": {
     "node": ">=18.0.0"

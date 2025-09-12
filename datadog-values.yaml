@@ -15,13 +15,6 @@ datadog:
     # Enable non-local traffic to receive traces from other containers
     portEnabled: true
     port: 8126
-    # Enable single step instrumentation
-    instrumentation:
-      enabled: true
-      enabledNamespaces: ["default"]
-      libVersions:
-        go: latest
-        java: latest
   logs:
     enabled: true
     containerCollectAll: true

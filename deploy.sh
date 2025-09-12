@@ -166,8 +166,29 @@ print_success "Nginx deployed"
 # Wait for applications to be ready
 print_status "Waiting for applications to be ready..."
 kubectl wait --for=condition=available --timeout=300s deployment golang-api
+if [ $? -ne 0 ]; then
+    print_error "Golang API deployment failed to become ready within 5 minutes"
+    print_status "Checking golang-api pod status..."
+    kubectl describe pod -l app=golang-api
+    exit 1
+fi
+
 kubectl wait --for=condition=available --timeout=300s deployment nodejs-api
+if [ $? -ne 0 ]; then
+    print_error "Node.js API deployment failed to become ready within 5 minutes"
+    print_status "Checking nodejs-api pod status and logs..."
+    kubectl describe pod -l app=nodejs-api
+    kubectl logs -l app=nodejs-api --tail=50
+    exit 1
+fi
+
 kubectl wait --for=condition=available --timeout=300s deployment nginx
+if [ $? -ne 0 ]; then
+    print_error "Nginx deployment failed to become ready within 5 minutes"
+    print_status "Checking nginx pod status..."
+    kubectl describe pod -l app=sample-nginx
+    exit 1
+fi
 print_success "All applications are ready"
 
 # Get service information

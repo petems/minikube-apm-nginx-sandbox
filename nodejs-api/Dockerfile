@@ -19,6 +19,7 @@ RUN npm install --omit=dev && npm cache clean --force
 
 # Copy application code
 COPY server.js ./
+COPY src/ ./src/
 
 # Create logs directory
 RUN mkdir -p /app/logs && chown -R nodejs:nodejs /app

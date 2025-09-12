@@ -1,8 +1,9 @@
-'use strict'
+import { createLogger, format, transports } from 'winston';
 
-const winston = require('winston')
+const logger = createLogger({
+  level: 'info',
+  format: format.json(),       // JSON required for auto-injection
+  transports: [new transports.Console()]
+});
 
-module.exports = winston.createLogger({
-  level: 'debug',
-  transports: new winston.transports.Console()
-})
+export default logger;

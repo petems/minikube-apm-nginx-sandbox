@@ -1,30 +1,35 @@
 // This line must come before importing any instrumented module.
-import 'dd-trace/init.js';
+import tracer from 'dd-trace';
+
+// Initialize tracer with logInjection for automatic trace correlation
+tracer.init({ logInjection: true });
 
 import express from 'express';
-import bunyan from 'bunyan';
-
-// Configure Bunyan logger with Datadog integration
-const logger = bunyan.createLogger({
-  name: 'nodejs-api',
-  level: process.env.LOG_LEVEL || 'info',
-  service: process.env.DD_SERVICE || 'nodejs-api',
-  env: process.env.DD_ENV || 'dev',
-  version: process.env.DD_VERSION || '0.1.0',
-  streams: [
-    {
-      stream: process.stdout,
-      level: 'info'
-    }
-  ],
-  serializers: bunyan.stdSerializers
-});
+import logger from './logger.js';
 
 const app = express();
 const port = process.env.PORT || 3000;
 
 // Middleware
 app.use(express.json());
+
+// Middleware to log Datadog headers when present
+app.use((req, res, next) => {
+  const datadogHeaders = {};
+  if (req.headers['x-datadog-trace-id']) {
+    datadogHeaders['X-Datadog-Trace-Id'] = req.headers['x-datadog-trace-id'];
+  }
+  if (req.headers['x-datadog-parent-id']) {
+    datadogHeaders['X-Datadog-Parent-Id'] = req.headers['x-datadog-parent-id'];
+  }
+  
+  if (Object.keys(datadogHeaders).length > 0) {
+    logger.info('Incoming Datadog headers', datadogHeaders);
+  }
+  
+  next();
+});
+
 
 // Error scenarios for realistic simulation (matching Go API)
 const errorScenarios = [
@@ -102,19 +107,13 @@ app.get('/health', (req, res) => {
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  logger.error(err, 'Unhandled error occurred');
+  logger.error({ err }, 'Unhandled error occurred');
   
   res.status(500).json({
     error: 'INTERNAL_ERROR',
     message: 'An internal error occurred',
     timestamp: new Date().toISOString()
   });
-});
-
-// Start server
-app.listen(port, '0.0.0.0', () => {
-  logger.info({ port }, 'Node.js API server started on port %d', port);
-  logger.info('Service is ready to accept requests');
 });
 
 // Graceful shutdown
@@ -127,3 +126,5 @@ process.on('SIGINT', () => {
   logger.info('SIGINT received, shutting down gracefully');
   process.exit(0);
 });
+
+export default app;
