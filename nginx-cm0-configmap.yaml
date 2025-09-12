@@ -14,6 +14,7 @@ data:
     http {
         include       /etc/nginx/mime.types;
         default_type  application/octet-stream;
+        
         # ref. https://docs.datadoghq.com/integrations/nginx/?tab=host#log-collection
         log_format main_datadog '$remote_addr - $remote_user [$time_local] "$request" '
                                '$status $body_bytes_sent $request_time '
